@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Porta Partners — KPI Dashboard 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+// SharePoint folder path — ZIPs must be uploaded here
+const SP_FOLDER = '/sites/PortaPartners/Shared%20Documents/KPI%20Dashboard';
+</script>
+<style>
+  /*
+   * COLOUR PALETTE
+   *  Blue   #00b9ff  — on track (50–100% of pro-rata target)
+   *  Green  #00e5a0  — ahead of target (≥100% of pro-rata)
+   *  Orange #ff8c42  — below 50% of pro-rata target
+   */
+  :root {
+    --blue:#00b9ff;   --blue-mid:rgba(0,185,255,0.15);
+    --green:#00e5a0;  --green-mid:rgba(0,229,160,0.14);
+    --orange:#ffaa00; --orange-mid:rgba(255,170,0,0.14);
+    --navy:#0e103e; --navy-card:#121548; --navy-edge:#1a1e5a;
+    --white:#ffffff; --w80:rgba(255,255,255,0.80); --w50:rgba(255,255,255,0.50);
+    --w25:rgba(255,255,255,0.25); --w08:rgba(255,255,255,0.08); --w04:rgba(255,255,255,0.04);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--navy);color:var(--white);font-family:'Manrope',sans-serif;min-height:100vh;overflow-x:hidden;}
+  body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+    background:radial-gradient(ellipse 80% 55% at 0% 100%,rgba(0,185,255,0.08) 0%,transparent 55%),
+               radial-gradient(ellipse 60% 60% at 100% 0%,rgba(0,185,255,0.05) 0%,transparent 50%);}
+
+  /* ── MODAL ── */
+  #uploadModal{display:none;position:fixed;inset:0;z-index:200;background:rgba(10,12,50,0.92);backdrop-filter:blur(6px);align-items:center;justify-content:center;}
+  #uploadModal.open{display:flex;}
+  .modal-box{background:var(--navy-card);border:1px solid var(--navy-edge);border-radius:16px;padding:40px;width:540px;display:flex;flex-direction:column;gap:28px;position:relative;}
+  .modal-header{text-align:center;}
+  .modal-header h2{font-size:13px;font-weight:800;letter-spacing:0.3em;text-transform:uppercase;color:var(--blue);margin-bottom:6px;}
+  .modal-header p{font-size:12px;font-weight:500;color:var(--w50);}
+  .modal-close{position:absolute;top:16px;right:16px;background:none;border:none;color:var(--w25);font-size:20px;cursor:pointer;line-height:1;padding:4px 8px;}
+  .modal-close:hover{color:var(--white);}
+  .zip-drop-area{border:1.5px dashed var(--navy-edge);border-radius:12px;padding:32px 20px;display:flex;flex-direction:column;align-items:center;gap:12px;cursor:pointer;transition:border-color 0.2s,background 0.2s;position:relative;text-align:center;}
+  .zip-drop-area:hover,.zip-drop-area.drag-over{border-color:var(--blue);background:var(--blue-mid);}
+  .zip-drop-area input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+  .zip-drop-area .dz-icon{font-size:32px;}
+  .zip-drop-area .dz-title{font-size:14px;font-weight:700;color:var(--w80);}
+  .zip-drop-area .dz-sub{font-size:11px;font-weight:500;color:var(--w25);letter-spacing:0.08em;}
+  .zip-status{display:flex;flex-direction:column;gap:8px;}
+  .zip-item{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:8px;background:var(--w04);border:1px solid transparent;font-size:12px;font-weight:600;color:var(--w50);transition:all 0.2s;}
+  .zip-item.loaded{background:var(--green-mid);border-color:rgba(0,229,160,0.2);color:var(--white);}
+  .zip-item.error{background:rgba(255,92,92,0.1);border-color:rgba(255,92,92,0.3);color:#ff5c5c;}
+  .zip-item .zi-dot{width:8px;height:8px;border-radius:50%;background:var(--w25);flex-shrink:0;transition:background 0.2s;}
+  .zip-item.loaded .zi-dot{background:var(--green);}
+  .zip-item.error .zi-dot{background:#ff5c5c;}
+  .zip-item .zi-name{flex:1;}
+  .zip-item .zi-check{font-size:14px;}
+  .modal-actions{display:flex;flex-direction:column;align-items:center;gap:10px;}
+  #applyBtn{width:100%;padding:14px;background:var(--blue);color:var(--navy);border:none;border-radius:8px;font-family:'Manrope',sans-serif;font-size:13px;font-weight:800;letter-spacing:0.15em;text-transform:uppercase;cursor:pointer;transition:opacity 0.2s;opacity:0.35;}
+  #applyBtn:not(:disabled){opacity:1;}
+  #applyBtn:not(:disabled):hover{opacity:0.88;}
+  #applyBtn:disabled{cursor:not-allowed;}
+  .modal-hint{font-size:11px;font-weight:500;color:var(--w25);}
+
+  /* ── MANUAL FEES MODAL ── */
+  #manualModal{display:none;position:fixed;inset:0;z-index:200;background:rgba(10,12,50,0.92);backdrop-filter:blur(6px);align-items:center;justify-content:center;}
+  #manualModal.open{display:flex;}
+  .manual-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .manual-row{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--w04);border-radius:7px;border:1px solid var(--navy-edge);}
+  .manual-row label{font-size:11px;font-weight:700;color:var(--w50);width:34px;flex-shrink:0;}
+  .manual-row .manual-prefix{font-size:13px;font-weight:600;color:var(--w25);}
+  .manual-row input{background:transparent;border:none;outline:none;font-family:'Manrope',sans-serif;font-size:14px;font-weight:700;color:var(--white);width:100%;text-align:right;}
+  .manual-row input::placeholder{color:var(--w25);}
+  .manual-row.has-value{background:var(--blue-mid);border-color:rgba(0,185,255,0.25);}
+  .manual-total{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--w04);border-radius:7px;border:1px solid var(--navy-edge);margin-top:4px;}
+  .manual-total .mt-label{font-size:11px;font-weight:700;color:var(--w50);}
+  .manual-total .mt-value{font-size:16px;font-weight:800;color:var(--white);}
+  #saveManualBtn{width:100%;padding:14px;background:var(--blue);color:var(--navy);border:none;border-radius:8px;font-family:'Manrope',sans-serif;font-size:13px;font-weight:800;letter-spacing:0.15em;text-transform:uppercase;cursor:pointer;transition:opacity 0.2s;}
+  #saveManualBtn:hover{opacity:0.88;}
+  #dashboard{position:relative;z-index:1;max-width:1920px;margin:0 auto;padding:24px 40px 20px;min-height:100vh;display:flex;flex-direction:column;gap:18px;}
+
+  .header{display:flex;align-items:center;justify-content:space-between;padding-bottom:18px;border-bottom:1px solid var(--navy-edge);}
+  .logo-wrap{flex:1;}.logo-wrap img{height:48px;width:auto;display:block;}
+  .header-centre{flex:1;text-align:center;}
+  .header-centre .dash-title{font-size:13px;font-weight:700;letter-spacing:0.3em;text-transform:uppercase;color:var(--blue);margin-bottom:3px;}
+  .header-centre .dash-sub{font-size:11px;font-weight:500;letter-spacing:0.15em;text-transform:uppercase;color:var(--w25);}
+  .header-right{flex:1;display:flex;flex-direction:column;align-items:flex-end;gap:6px;}
+  .data-label{font-size:10px;font-weight:600;letter-spacing:0.2em;text-transform:uppercase;color:var(--w25);}
+  .data-date{font-size:20px;font-weight:800;color:var(--white);letter-spacing:-0.01em;line-height:1;}
+  .update-btn{padding:6px 16px;background:transparent;border:1px solid rgba(0,185,255,0.4);border-radius:6px;color:var(--blue);font-family:'Manrope',sans-serif;font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;cursor:pointer;transition:background 0.2s,border-color 0.2s;display:flex;align-items:center;gap:6px;}
+  .update-btn:hover{background:var(--blue-mid);border-color:var(--blue);}
+  .update-btn .upd-dot{width:6px;height:6px;border-radius:50%;background:var(--blue);animation:pulse 2s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.3;transform:scale(0.7)}}
+
+  /* ── YEAR BAR ── */
+  .year-row{display:flex;flex-direction:column;gap:5px;}
+  .year-track{height:6px;background:var(--w04);border-radius:3px;overflow:hidden;position:relative;}
+  .year-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--blue),rgba(0,185,255,0.5));transition:width 2s ease;position:relative;}
+  .year-fill::after{content:'';position:absolute;right:0;top:0;bottom:0;width:28px;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.3));animation:shimmer 2.5s ease-in-out infinite;}
+  @keyframes shimmer{0%,100%{opacity:0}50%{opacity:1}}
+  .year-labels{display:flex;justify-content:space-between;align-items:center;font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--w25);}
+  .year-pct-badge{background:var(--blue-mid);border:1px solid rgba(0,185,255,0.3);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:800;color:var(--blue);letter-spacing:0.05em;}
+
+  /* ── STATUS ── */
+  .status-bar{display:none;padding:9px 16px;border-radius:7px;border:1px solid;font-size:12px;font-weight:600;}
+  .status-bar.show{display:block;}
+  .status-bar.ok{background:rgba(0,229,160,0.10);border-color:rgba(0,229,160,0.3);color:var(--green);}
+  .status-bar.warn{background:var(--orange-mid);border-color:rgba(255,170,0,0.3);color:var(--orange);}
+
+  /* ── KPI CARDS ── */
+  .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
+  .kpi-card{background:var(--navy-card);border:1px solid var(--navy-edge);border-radius:10px;padding:24px 22px 20px;display:flex;flex-direction:column;position:relative;overflow:hidden;opacity:0;transform:translateY(16px);animation:fadeUp 0.6s ease forwards;}
+  .kpi-card::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--blue),transparent);opacity:0.5;}
+  .kpi-card:nth-child(1){animation-delay:.07s}.kpi-card:nth-child(2){animation-delay:.14s}
+  .kpi-card:nth-child(3){animation-delay:.21s}.kpi-card:nth-child(4){animation-delay:.28s}
+  @keyframes fadeUp{to{opacity:1;transform:translateY(0)}}
+  .kpi-tag{font-size:11px;font-weight:800;letter-spacing:0.22em;text-transform:uppercase;color:var(--blue);margin-bottom:10px;}
+  .kpi-value-row{display:flex;align-items:baseline;gap:3px;margin-bottom:4px;line-height:1;}
+  .kpi-prefix{font-size:clamp(18px,1.8vw,26px);font-weight:700;color:var(--w50);}
+  .kpi-value{font-size:clamp(38px,4.5vw,68px);font-weight:800;color:var(--white);letter-spacing:-0.03em;line-height:0.95;}
+  .kpi-suffix{font-size:clamp(14px,1.4vw,22px);font-weight:600;color:var(--w50);align-self:flex-end;margin-bottom:4px;}
+  .kpi-sub{font-size:12px;font-weight:400;color:var(--w50);margin-bottom:5px;}
+  .baseline-tag{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:4px;background:var(--blue-mid);font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--blue);margin-bottom:14px;}
+  .prog-wrap{margin-top:auto;}
+  .prog-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;}
+  .prog-pct{font-size:20px;font-weight:800;color:var(--white);letter-spacing:-0.01em;}
+  .prog-target{font-size:11px;font-weight:600;color:var(--w25);}
+  .prog-track{height:5px;background:var(--w08);border-radius:3px;overflow:hidden;margin-bottom:6px;}
+  .prog-fill{height:100%;border-radius:3px;background:var(--blue);transition:width 1.8s cubic-bezier(0.25,0.46,0.45,0.94);position:relative;}
+  .prog-fill.c-green{background:linear-gradient(90deg,#00a870,var(--green));}
+  .prog-fill.c-blue{background:linear-gradient(90deg,#0090cc,var(--blue));}
+  .prog-fill.c-orange{background:linear-gradient(90deg,#cc5500,var(--orange));}
+  .prog-fill::after{content:'';position:absolute;right:0;top:0;bottom:0;width:28px;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.3));animation:shimmer 2.5s ease-in-out infinite;}
+  .prog-note{font-size:11px;font-weight:500;color:var(--w50);}
+
+  /* ── CHARTS ROW ── */
+  .charts-row{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  .chart-card{background:var(--navy-card);border:1px solid var(--navy-edge);border-radius:10px;padding:22px 22px 16px;position:relative;overflow:hidden;opacity:0;transform:translateY(16px);animation:fadeUp 0.6s ease forwards;}
+  .chart-card::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--blue),transparent);opacity:0.3;}
+  .chart-card:nth-child(1){animation-delay:.35s}.chart-card:nth-child(2){animation-delay:.42s}.chart-card:nth-child(3){animation-delay:.49s}
+  .card-title{font-size:11px;font-weight:800;letter-spacing:0.22em;text-transform:uppercase;color:var(--blue);margin-bottom:14px;}
+  .chart-wrap{height:110px;}
+  svg.line-chart{width:100%;height:100%;overflow:visible;}
+  .chart-month-labels{display:flex;justify-content:space-between;margin-top:6px;}
+  .chart-month-labels span{font-size:9px;font-weight:600;color:var(--w25);}
+
+  /* ── MILESTONES ROW ── */
+  .milestones-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
+  .milestone-card{background:var(--navy-card);border:1px solid var(--navy-edge);border-radius:10px;padding:20px;position:relative;overflow:hidden;opacity:0;transform:translateY(16px);animation:fadeUp 0.6s ease forwards;}
+  .milestone-card::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--blue),transparent);opacity:0.25;}
+  .milestone-card:nth-child(1){animation-delay:.56s}.milestone-card:nth-child(2){animation-delay:.63s}
+  .milestone-card:nth-child(3){animation-delay:.70s}.milestone-card:nth-child(4){animation-delay:.77s}
+  .mc-label{font-size:10px;font-weight:800;letter-spacing:0.22em;text-transform:uppercase;color:var(--blue);margin-bottom:12px;}
+  .milestone-list{display:flex;flex-direction:column;gap:7px;}
+  .milestone{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:7px;background:var(--w04);border:1px solid transparent;}
+  .milestone.achieved{background:var(--green-mid);border-color:rgba(0,229,160,0.2);}
+  .milestone.next{background:var(--blue-mid);border-color:rgba(0,185,255,0.25);}
+  .milestone.prev-achieved{background:rgba(0,229,160,0.06);border-color:rgba(0,229,160,0.12);}
+  .m-icon{font-size:13px;flex-shrink:0;width:20px;text-align:center;}
+  .m-title{font-size:12px;font-weight:700;color:var(--white);}
+  .m-sub{font-size:10px;font-weight:400;color:var(--w50);margin-top:1px;}
+
+  .footer{display:flex;align-items:center;justify-content:space-between;padding-top:10px;border-top:1px solid var(--navy-edge);font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--w25);}
+  .footer-right{display:flex;gap:24px;}
+  .footer-stat strong{color:var(--w80);font-weight:700;}
+</style>
+</head>
+<body>
+
+<!-- ═══════ REFRESH MODAL ═══════ -->
+<div id="uploadModal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <div class="modal-header">
+      <h2>Refreshing Dashboard Data</h2>
+      <p>Reading ZIP files from the <strong>KPI Dashboard</strong> folder in SharePoint Documents</p>
+    </div>
+    <div class="zip-status">
+      <div class="zip-item" id="zi-aua"><div class="zi-dot"></div><div class="zi-name">AUA &amp; Client Base</div><div class="zi-check"></div></div>
+      <div class="zip-item" id="zi-fees"><div class="zi-dot"></div><div class="zi-name">Fees Over Time</div><div class="zi-check"></div></div>
+      <div class="zip-item" id="zi-payments"><div class="zi-dot"></div><div class="zi-name">Regular Payments</div><div class="zi-check"></div></div>
+    </div>
+    <div class="modal-actions">
+      <div class="modal-hint" id="refreshHint">Scanning SharePoint folder for ZIP files…</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ MANUAL FEES MODAL ═══════ -->
+<div id="manualModal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeManualModal()">✕</button>
+    <div class="modal-header">
+      <h2>Off-Platform Fee Adjustments</h2>
+      <p>Enter manual fee amounts by month — these are added to Söderberg figures for the YTD total</p>
+    </div>
+    <div class="manual-grid" id="manualGrid"><!-- populated by JS --></div>
+    <div class="manual-total">
+      <span class="mt-label">Total Manual Adjustment (YTD)</span>
+      <span class="mt-value" id="manualTotalDisplay">£0.00</span>
+    </div>
+    <div class="modal-actions">
+      <button id="saveManualBtn" onclick="saveManualFees()">Save &amp; Update Dashboard →</button>
+      <div class="modal-hint">Stored locally in your browser — survives page reloads</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ DASHBOARD ═══════ -->
+<div id="dashboard">
+
+  <div class="header">
+    <div class="logo-wrap">
+      <img src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2aWV3Qm94PSIwIDAgNzYyLjExIDM0Ny42OSI+CiAgPHJlY3Qgd2lkdGg9Ijc2Mi4xMSIgaGVpZ2h0PSIzNDcuNjkiIGZpbGw9IiMwZTEwM2UiLz4KICA8ZGVmcz4KICAgIDxzdHlsZT4KICAgICAgLmNscy0xIHsKICAgICAgICBmaWxsOiAjMDBiOWZmOwogICAgICB9CiAgICA8L3N0eWxlPgogIDwvZGVmcz4KICA8Zz4KICAgIDxwYXRoIGNsYXNzPSJjbHMtMSIgZD0iTTcuNCw5LjQyaDYxLjJjMTguNTEsMCwyNy43Niw4Ljk0LDI3Ljc2LDI2Ljh2NjMuMzRjMCwxNy44Ny05LjI1LDI2LjgtMjcuNzYsMjYuOGgtMzQuMzN2NzMuNjlINy40VjkuNDJaTTY5LjUsOTUuMjl2LTU0LjgxYzAtMy42NS0uNi02LjA0LTEuNzktNy4xNi0xLjE5LTEuMTEtMy41OC0xLjY4LTcuMTctMS42OGgtMjYuMjd2NzIuNzhoMjYuMjdjMy41OCwwLDUuOTctLjYxLDcuMTctMS44MywxLjE5LTEuMjIsMS43OS0zLjY1LDEuNzktNy4zMVoiLz4KICAgIDxwYXRoIGNsYXNzPSJjbHMtMSIgZD0iTTIwMC41Niw5LjQyaDMzLjE0YzE4LjUxLDAsMjcuNzYsOC45NCwyNy43NiwyNi44djEzNy4wM2MwLDE3Ljg3LTkuMjUsMjYuOC0yNy43NiwyNi44aC0zMy4xNGMtMTguNzEsMC0yOC4wNi04LjkzLTI4LjA2LTI2LjhWMzYuMjFjMC0xNy44Niw5LjM1LTI2LjgsMjguMDYtMjYuOFpNMjM0LjU5LDE2OC45OFY0MC40OGMwLTMuNjUtLjYtNi4wNC0xLjc5LTcuMTYtMS4xOS0xLjExLTMuNTgtMS42OC03LjE3LTEuNjhoLTE3LjMyYy0zLjU4LDAtNS45Mi41Ni03LjAyLDEuNjgtMS4xLDEuMTItMS42NCwzLjUtMS42NCw3LjE2djEyOC41MWMwLDMuNjUuNTUsNi4wNCwxLjY0LDcuMTYsMS4wOSwxLjEyLDMuNDMsMS42OCw3LjAyLDEuNjhoMTcuMzJjMy41OCwwLDUuOTctLjU2LDcuMTctMS42OCwxLjE5LTEuMTEsMS43OS0zLjUsMS43OS03LjE2WiIvPgogICAgPHBhdGggY2xhc3M9ImNscy0xIiBkPSJNMzcxLjkyLDEyM3Y3Ny4wNGgtMjYuODdWOS40Mmg2MS4yYzE4LjUxLDAsMjcuNzYsOC45NCwyNy43NiwyNi44djU5LjY5YzAsMTUuNDMtNi42NywyNC4yNi0yMCwyNi40OWwyOS41Niw3Ny42NWgtMjguOTZsLTI4LjA2LTc3LjA0aC0xNC42M1pNMzcxLjkyLDMxLjY0djY5LjQzaDI2LjI3YzMuNTgsMCw1Ljk3LS41Niw3LjE3LTEuNjgsMS4xOS0xLjExLDEuNzktMy41LDEuNzktNy4xNnYtNTEuNzdjMC0zLjY1LS42LTYuMDQtMS43OS03LjE2LTEuMTktMS4xMS0zLjU4LTEuNjgtNy4xNy0xLjY4aC0yNi4yN1oiLz4KICAgIDxwYXRoIGNsYXNzPSJjbHMtMSIgZD0iTTU5Mi41NCw5LjQydjIyLjIzaC0zMS4zNXYxNjguNGgtMjYuODdWMzEuNjRoLTMxLjM1VjkuNDJoODkuNTZaIi8+CiAgICA8cGF0aCBjbGFzcz0iY2xzLTEiIGQ9Ik03MjUuOTksMjAwLjA0bC03LjQ2LTQ0LjE2aC0zOS40MWwtNi44Nyw0NC4xNmgtMjYuODdsMzMuMTQtMTkwLjYzaDM5LjExbDM1LjUzLDE5MC42M2gtMjcuMTdaTTY4Mi40LDEzMy42NmgzMi41NGwtMTcuMDItMTAwLjQ5LTE1LjUyLDEwMC40OVoiLz4KICA8L2c+CiAgPGc+CiAgICA8cGF0aCBjbGFzcz0iY2xzLTEiIGQ9Ik05LjMxLDIzNy45N2MwLTEuMDIuNjMtMS42NSwxLjY1LTEuNjVoMjYuMTZjNy4yNCwwLDEzLjMzLDUuOTcsMTMuMzMsMTMuMzN2MjguMDdjMCw3LjM3LTYuMSwxMy4zMy0xMy4zMywxMy4zM2gtMTQuNzN2MzUuMDVjMCwxLjAyLS42MywxLjY1LTEuNTIsMS42NWgtOS45MWMtMS4wMiwwLTEuNjUtLjYzLTEuNjUtMS42NXYtODguMTRaTTM3LjI1LDI1Mi4wNmMwLTEuNzgtMS40LTMuMy0zLjMtMy4zaC0xMS41NnYzMC4zNWgxMS41NmMxLjksMCwzLjMtMS41MiwzLjMtMy4zdi0yMy43NVoiLz4KICAgIDxwYXRoIGNsYXNzPSJjbHMtMSIgZD0iTTEzMS4zNiwyMzYuMzJzMS41MiwwLDEuNjUsMS42NWwxNS4yNCw4OC4xNGMuMjUsMS42NS0uODksMS42NS0uODksMS42NWgtMTAuOTJzLTEuMTQsMC0xLjI3LTEuNjVsLTIuMTYtMTIuMTloLTEzLjg0bC0yLjE2LDEyLjE5Yy0uMTMsMS42NS0xLjI3LDEuNjUtMS4yNywxLjY1aC0xMC45MnMtMS4xNCwwLS44OS0xLjY1bDE1LjI0LTg4LjE0Yy4xMy0xLjY1LDEuNjUtMS42NSwxLjY1LTEuNjVoMTAuNTRaTTEyMS4yLDMwMS40N2g5Ljc4bC00Ljk1LTM2LjA3LTQuODMsMzYuMDdaIi8+CiAgICA8cGF0aCBjbGFzcz0iY2xzLTEiIGQ9Ik0yMDguMDcsMjM3Ljk3YzAtMS4wMi42My0xLjY1LDEuNjUtMS42NWgyNi4xNmM3LjI0LDAsMTMuMzMsNS45NywxMy4zMywxMy4zM3YyOC4wN2MwLDUuNzEtMy41NiwxMC40MS04LjM4LDEyLjQ1bDkuMTQsMzUuOTRjLjUxLDEuNjUtLjc2LDEuNjUtLjc2LDEuNjVoLTEwLjkycy0xLjE0LDAtMS41Mi0xLjY1bC04Ljg5LTM1LjA1aC02LjczdjM1LjA1YzAsMS4wMi0uNjMsMS42NS0xLjUyLDEuNjVoLTkuOTFjLTEuMDIsMC0xLjY1LS42My0xLjY1LTEuNjV2LTg4LjE0Wk0yMzYuMDEsMjUyLjA2YzAtMS43OC0xLjQtMy4zLTMuMy0zLjNoLTExLjU2djMwLjM1aDExLjU2YzEuOSwwLDMuMy0xLjUyLDMuMy0zLjN2LTIzLjc1WiIvPgogICAgPHBhdGggY2xhc3M9ImNscy0xIiBkPSJNMzQ1Ljg3LDIzNi4zMmMuODksMCwxLjY1LjYzLDEuNjUsMS42NXY5LjI3YzAsLjg5LS43NiwxLjUyLTEuNjUsMS41MmgtMTIuOTV2NzcuMzRjMCwxLjAyLS42NCwxLjY1LTEuNTIsMS42NWgtMTAuMDNjLS44OSwwLTEuNTItLjYzLTEuNTItMS42NXYtNzcuMzRoLTEyLjgzYy0uODksMC0xLjY1LS42My0xLjY1LTEuNTJ2LTkuMjdjMC0xLjAyLjc2LTEuNjUsMS42NS0xLjY1aDM4Ljg2WiIvPgogICAgPHBhdGggY2xhc3M9ImNscy0xIiBkPSJNNDA4LjIzLDIzNi4zMmg5Ljc4czEuMjcsMCwxLjY1LDEuNjVsMTUuODcsNDkuMTV2LTQ5LjE1YzAtMS4wMi42NC0xLjY1LDEuNTItMS42NWgxMC4wM2MuODksMCwxLjUyLjYzLDEuNTIsMS42NXY4OC4xNGMwLDEuMDItLjYzLDEuNjUtMS41MiwxLjY1aC05LjI3cy0xLjI3LDAtMS43OC0xLjY1bC0xNi4zOC00NC4zMnY0NC4zMmMwLDEuMDItLjY0LDEuNjUtMS41MiwxLjY1aC05LjkxYy0xLjAyLDAtMS42NS0uNjMtMS42NS0xLjY1di04OC4xNGMwLTEuMDIuNjMtMS42NSwxLjY1LTEuNjVaIi8+CiAgICA8cGF0aCBjbGFzcz0iY2xzLTEiIGQ9Ik01MjMuOTMsMzE1LjMxaDI0Yy44OSwwLDEuNTIuNjQsMS41MiwxLjY1djkuMTRjMCwxLjAyLS42MywxLjY1LTEuNTIsMS42NWgtMzUuNDNjLTEuMDIsMC0xLjY1LS42My0xLjY1LTEuNjV2LTg4LjE0YzAtMS4wMi42My0xLjY1LDEuNjUtMS42NWgzNC42N2MuODksMCwxLjY1LjYzLDEuNjUsMS42NXY5LjI3YzAsMS4wMi0uNzYsMS42NS0xLjY1LDEuNjVoLTIzLjI0djI0LjUxaDE4LjY3Yy44OSwwLDEuNjUuNjMsMS42NSwxLjUydjkuMjdjMCwuODktLjc2LDEuNjUtMS42NSwxLjY1aC0xOC42N3YyOS40NloiLz4KICAgIDxwYXRoIGNsYXNzPSJjbHMtMSIgZD0iTTYwOS43OCwyMzcuOTdjMC0xLjAyLjYzLTEuNjUsMS42NS0xLjY1aDI2LjE2YzcuMjQsMCwxMy4zMyw1Ljk3LDEzLjMzLDEzLjMzdjI4LjA3YzAsNS43MS0zLjU2LDEwLjQxLTguMzgsMTIuNDVsOS4xNCwzNS45NGMuNTEsMS42NS0uNzYsMS42NS0uNzYsMS42NWgtMTAuOTJzLTEuMTQsMC0xLjUyLTEuNjVsLTguODktMzUuMDVoLTYuNzN2MzUuMDVjMCwxLjAyLS42NCwxLjY1LTEuNTIsMS42NWgtOS45MWMtMS4wMiwwLTEuNjUtLjYzLTEuNjUtMS42NXYtODguMTRaTTYzNy43MiwyNTIuMDZjMC0xLjc4LTEuNC0zLjMtMy4zLTMuM2gtMTEuNTZ2MzAuMzVoMTEuNTZjMS45MSwwLDMuMy0xLjUyLDMuMy0zLjN2LTIzLjc1WiIvPgogICAgPHBhdGggY2xhc3M9ImNscy0xIiBkPSJNNzEwLjI0LDMwMC44M2MwLTEuMDIuNzYtMS42NSwxLjY1LTEuNjVoOS45MWMxLjAyLDAsMS42NS42NCwxLjY1LDEuNjV2MTIuMTljMCwxLjc4LDEuNTIsMy4zLDMuMywzLjNoOC4yNWMxLjc4LDAsMy4zLTEuNTIsMy4zLTMuM3YtMjMuMjRjMC0xLjc4LTEuNTItMy4zLTMuMy0zLjNoLTExLjNjLTcuMzcsMC0xMy40Ni01Ljk3LTEzLjQ2LTEzLjMzdi0yNGMwLTcuNDksNi4xLTEzLjMzLDEzLjQ2LTEzLjMzaDEzLjg0YzcuMjQsMCwxMy4zMyw1Ljg0LDEzLjMzLDEzLjMzdjguMzhjMCwxLjAyLS42MywxLjY1LTEuNjUsMS42NWgtOS45MWMtLjg5LDAtMS42NS0uNjQtMS42NS0xLjY1di01Ljk3YzAtMS45MS0xLjQtMy4zLTMuMy0zLjNoLTcuNjJjLTEuNzgsMC0zLjMsMS40LTMuMywzLjN2MTkuNjhjMCwxLjc4LDEuNTIsMy4zLDMuMywzLjNoMTEuM2M3LjM3LDAsMTMuMzMsNS44NCwxMy4zMywxMy4zM3YyNy4wNWMwLDcuNDktNS45NywxMy40Ni0xMy4zMywxMy40NmgtMTQuMzVjLTcuMzcsMC0xMy40Ni01Ljk3LTEzLjQ2LTEzLjQ2di0xNC4xWiIvPgogIDwvZz4KPC9zdmc+" alt="Porta Partners">
+    </div>
+    <div class="header-centre">
+      <div class="dash-title">KPI Dashboard</div>
+      <div class="dash-sub">2026 Growth Targets</div>
+    </div>
+    <div class="header-right">
+      <div class="data-label">Data as of</div>
+      <div class="data-date" id="dataDate">—</div>
+      <button class="update-btn" onclick="refreshFromSharePoint()"><span class="upd-dot"></span>Refresh Data</button>
+      <button class="update-btn" onclick="openManualModal()">✎ Manual Fees</button>
+    </div>
+  </div>
+
+  <!-- YEAR BAR -->
+  <div class="year-row">
+    <div class="year-labels">
+      <span>Jan 2026</span>
+      <span class="year-pct-badge" id="yearPctBadge">—</span>
+      <span>Dec 2026</span>
+    </div>
+    <div class="year-track"><div class="year-fill" id="yearFill" style="width:0%"></div></div>
+  </div>
+
+  <div class="status-bar" id="statusBar"></div>
+
+  <!-- ROW 1: KPI CARDS -->
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-tag">Assets Under Management</div>
+      <div class="kpi-value-row"><span class="kpi-prefix">£</span><span class="kpi-value" id="aumVal">—</span><span class="kpi-suffix">m</span></div>
+      <div class="kpi-sub" id="aumSub"></div>
+      <div class="baseline-tag" id="baseAum">↑ £22.8m from £224.3m Dec 2025</div>
+      <div class="prog-wrap">
+        <div class="prog-row"><span class="prog-pct" id="aumPct">—</span><span class="prog-target">Target: £375m</span></div>
+        <div class="prog-track"><div class="prog-fill" id="aumBar" style="width:0%"></div></div>
+        <div class="prog-note" id="aumNote"></div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-tag">Regular Contributions</div>
+      <div class="kpi-value-row"><span class="kpi-prefix">£</span><span class="kpi-value" id="contribVal">—</span><span class="kpi-suffix">k</span></div>
+      <div class="kpi-sub">per month</div>
+      <div class="baseline-tag" id="baseContrib">↑ £78.8k/mo from £442k Dec 2025</div>
+      <div class="prog-wrap">
+        <div class="prog-row"><span class="prog-pct" id="contribPct">—</span><span class="prog-target">Target: £750k/mo</span></div>
+        <div class="prog-track"><div class="prog-fill" id="contribBar" style="width:0%"></div></div>
+        <div class="prog-note" id="contribNote"></div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-tag">Initial Fees YTD</div>
+      <div class="kpi-value-row"><span class="kpi-prefix">£</span><span class="kpi-value" id="feesVal">—</span><span class="kpi-suffix">k</span></div>
+      <div class="kpi-sub" id="feesSub">2026 year to date</div>
+      
+      <div class="baseline-tag">Target: £130k in 2026</div>
+      <div class="prog-wrap">
+        <div class="prog-row"><span class="prog-pct" id="feesPct">—</span><span class="prog-target">Target: £130k</span></div>
+        <div class="prog-track"><div class="prog-fill" id="feesBar" style="width:0%"></div></div>
+        <div class="prog-note" id="feesNote"></div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-tag">Households / Clients</div>
+      <div class="kpi-value-row"><span class="kpi-value" id="clientsVal">—</span></div>
+      <div class="kpi-sub" id="clientsSub"></div>
+      <div class="baseline-tag" id="baseClients">↑ 88 from 664 clients Dec 2025</div>
+      <div class="prog-wrap">
+        <div class="prog-row"><span class="prog-pct" id="clientsPct">—</span><span class="prog-target">Target: 925</span></div>
+        <div class="prog-track"><div class="prog-fill" id="clientsBar" style="width:0%"></div></div>
+        <div class="prog-note" id="clientsNote"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROW 2: THREE CHARTS -->
+  <div class="charts-row">
+    <div class="chart-card">
+      <div class="card-title">AUM Growth — Monthly</div>
+      <div class="chart-wrap"><svg class="line-chart" id="aumChart" viewBox="0 0 800 110" preserveAspectRatio="none"></svg></div>
+      <div class="chart-month-labels" id="aumLabels"></div>
+    </div>
+    <div class="chart-card">
+      <div class="card-title">Initial Fees — by Month</div>
+      <div class="chart-wrap"><svg class="line-chart" id="feesChart" viewBox="0 0 800 110" preserveAspectRatio="none"></svg></div>
+      <div class="chart-month-labels" id="feesLabels"></div>
+    </div>
+    <div class="chart-card">
+      <div class="card-title">Client Growth — Monthly</div>
+      <div class="chart-wrap"><svg class="line-chart" id="clientsChart" viewBox="0 0 800 110" preserveAspectRatio="none"></svg></div>
+      <div class="chart-month-labels" id="clientsLabels"></div>
+    </div>
+  </div>
+
+  <!-- ROW 3: FOUR MILESTONE BOXES -->
+  <div class="milestones-row">
+    <div class="milestone-card"><div class="mc-label">AUM Milestones</div><div class="milestone-list" id="ms-aum"></div></div>
+    <div class="milestone-card"><div class="mc-label">Contributions Milestones</div><div class="milestone-list" id="ms-contrib"></div></div>
+    <div class="milestone-card"><div class="mc-label">Initial Fees Milestones</div><div class="milestone-list" id="ms-fees"></div></div>
+    <div class="milestone-card"><div class="mc-label">Client Milestones</div><div class="milestone-list" id="ms-clients"></div></div>
+  </div>
+
+  <div class="footer">
+    <span>Porta Partners · 2026</span>
+    <div class="footer-right">
+      <span class="footer-stat">Accounts: <strong id="footAccounts">—</strong></span>
+      <span class="footer-stat">Clients: <strong id="footClients">—</strong></span>
+      <span class="footer-stat">AUM: <strong id="footAUM">—</strong></span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Colour constants ─────────────────────────────────────────────────────────
+const C = { blue:'#00b9ff', green:'#00e5a0', orange:'#ffaa00' };
+
+const BASELINE   = { aum:224278301.51, contributions:442000, clients:664 };
+const TARGET     = { aum:375000000, contributions:750000, fees:130000, clients:925 };
+
+const MONTHS = ['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06',
+                '2026-07','2026-08','2026-09','2026-10','2026-11','2026-12'];
+const MONTH_NAMES = ['January','February','March','April','May','June',
+                     'July','August','September','October','November','December'];
+
+// ─── In-memory state (no localStorage needed) ────────────────────────────────
+let _currentState = null;
+let _manualFees   = {'2026-01':3843.88};
+
+function loadManualFees()              { return Object.assign({}, _manualFees); }
+function saveManualFeesToStorage(data) { _manualFees = Object.assign({}, data); }
+
+function manualFeesYTD(manualFees) {
+  const now=new Date();
+  const currentMonth=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  return MONTHS.filter(m=>m<=currentMonth).reduce((s,m)=>s+(parseFloat(manualFees[m])||0),0);
+}
+
+const FALLBACK = {
+  generatedAt:'2026-03-12',
+  aua:[
+    {month:'2025-12',value:224278301.51},{month:'2026-01',value:236784406.43},
+    {month:'2026-02',value:254006905.43},{month:'2026-03',value:247030005.27}
+  ],
+  clients:[
+    {month:'2025-12',accounts:1180,clients:664},{month:'2026-01',accounts:1240,clients:695},
+    {month:'2026-02',accounts:1335,clients:742},{month:'2026-03',accounts:1357,clients:754}
+  ],
+  fees:[
+    {month:'2026-01',adhoc:2972.00,initial:4714.27},{month:'2026-02',adhoc:2707.72,initial:2086.39},{month:'2026-03',adhoc:700.00,initial:1460.40}
+  ],
+  contributions:520822.23
+};
+
+const parsed = { aua:null, clients:null, fees:null, payments:null };
+
+// ─── Year progress ────────────────────────────────────────────────────────────
+function yearFraction() {
+  const now=new Date(), start=new Date('2026-01-01'), end=new Date('2026-12-31T23:59:59');
+  return Math.min(1,Math.max(0,(now-start)/(end-start)));
+}
+
+// ─── Pro-rata colour logic ────────────────────────────────────────────────────
+// ratio = actual / proRataTarget  (where proRataTarget = yearFrac * fullTarget)
+// ≥1.0 → green, ≥0.5 → blue, <0.5 → orange
+function proRataColour(actual, fullYearTarget, baseline) {
+  const frac = yearFraction();
+  const proRata = baseline + frac * (fullYearTarget - baseline);
+  const ratio = proRata > baseline ? (actual - baseline) / (proRata - baseline) : 1;
+  if (ratio >= 1.0) return 'green';
+  if (ratio >= 0.5) return 'blue';
+  return 'orange';
+}
+
+// For fees: pro-rata = yearFrac * 130000 (starts from 0)
+function feesProRataColour(actual) {
+  const frac = yearFraction();
+  const proRata = frac * TARGET.fees;
+  if (proRata <= 0) return 'blue';
+  const ratio = actual / proRata;
+  if (ratio >= 1.0) return 'green';
+  if (ratio >= 0.5) return 'blue';
+  return 'orange';
+}
+
+// Monthly fees: compare month's initial fee to 1/12 of annual target
+function monthlyFeeColour(monthlyFee) {
+  const monthly_target = TARGET.fees / 12;
+  if (monthlyFee >= monthly_target) return C.green;
+  if (monthlyFee >= monthly_target * 0.5) return C.blue;
+  return C.orange;
+}
+
+function colClass(c) { return 'c-'+c; }
+function colHex(c)   { return C[c]; }
+
+// ─── ZIP classification — matches both old-style and new Firm_-_ naming ───────
+function classifyZip(filename) {
+  const f = filename.toLowerCase();
+  // Must check fee BEFORE aua (fees zip doesn't contain 'aua')
+  if (f.includes('aua') || f.includes('client_base') || f.includes('client base') || f.includes('firm_-_aua')) return 'aua_clients';
+  if (f.includes('fee') || f.includes('firm_-_fee')) return 'fees';
+  if (f.includes('payment') || f.includes('regular')) return 'payments';
+  return null;
+}
+
+// ─── CSV helpers ──────────────────────────────────────────────────────────────
+// Splits a single CSV line respecting quoted fields
+function splitCSVLine(line) {
+  const vals=[]; let cur='', inQ=false;
+  for (const ch of line) {
+    if (ch==='"') { inQ=!inQ; }
+    else if (ch===',' && !inQ) { vals.push(cur.trim()); cur=''; }
+    else cur+=ch;
+  }
+  vals.push(cur.trim());
+  return vals.map(v=>v.replace(/^"|"$/g,'').trim());
+}
+
+function parseNum(v) {
+  if (v===undefined||v===null||v==='') return 0;
+  const n=parseFloat(String(v).replace(/[£,\s]/g,''));
+  return isNaN(n)?0:n;
+}
+
+// ─── Parsers ──────────────────────────────────────────────────────────────────
+
+// aua_over_time.csv format (Söderberg):
+//   row1: empty, "Break down by month" multiline label, "Sum of AUA"
+//   row2+: rownum, YYYY-MM, £value
+function parseAUA(csv) {
+  const lines=csv.trim().split(/\r?\n/).filter(l=>l.trim());
+  const results=[];
+  for (const line of lines) {
+    const vals=splitCSVLine(line);
+    // Find the column that looks like YYYY-MM
+    for (let i=0;i<vals.length;i++) {
+      if (/^\d{4}-\d{2}$/.test(vals[i])) {
+        const month=vals[i];
+        // AUA value is in the next column
+        const value=parseNum(vals[i+1]);
+        if (value>0) results.push({month,value});
+        break;
+      }
+    }
+  }
+  return results.sort((a,b)=>a.month.localeCompare(b.month));
+}
+
+// number_of_accounts_and_clients_with_aua_over_time.csv format:
+//   row1: "Break down by month" label, "Count of accounts with AUA", "Count of clients with AUA"
+//   row2+: YYYY-MM, accounts, clients
+function parseClients(csv) {
+  const lines=csv.trim().split(/\r?\n/).filter(l=>l.trim());
+  const results=[];
+  for (const line of lines) {
+    const vals=splitCSVLine(line);
+    if (/^\d{4}-\d{2}$/.test(vals[0])) {
+      results.push({month:vals[0], accounts:parseNum(vals[1]), clients:parseNum(vals[2])});
+    }
+  }
+  return results.sort((a,b)=>a.month.localeCompare(b.month));
+}
+
+// fees_over_time_by_type.csv — Söderberg wide pivot format
+// Col A = month, Col B = Adviser Adhoc Fee, Col C = Adviser Fee, Col D = Adviser Initial Fee, ...
+// Initial Fees = Adviser Adhoc Fee + Adviser Initial Fee (cols B + D)
+function parseFees(csv) {
+  const lines=csv.trim().split(/\r?\n/).filter(l=>l.trim());
+  if (!lines.length) return [];
+  // Row 1 = column type headers (e.g. "Transaction sub type, Adviser Adhoc Fee, ...")
+  const headers=splitCSVLine(lines[0]).map(h=>h.toLowerCase());
+  const idxAdhoc  =headers.findIndex(h=>h.includes('adhoc'));
+  const idxInitial=headers.findIndex(h=>h.includes('initial'));
+  const results=[];
+  for (let i=1;i<lines.length;i++) {
+    const vals=splitCSVLine(lines[i]);
+    const month=vals[0].substring(0,7);
+    if (!/^\d{4}-\d{2}/.test(month)) continue; // skip header/label rows
+    results.push({
+      month,
+      adhoc:   idxAdhoc>=0   ? parseNum(vals[idxAdhoc])   : 0,
+      initial: idxInitial>=0 ? parseNum(vals[idxInitial]) : 0,
+    });
+  }
+  return results.sort((a,b)=>a.month.localeCompare(b.month));
+}
+
+// regular_payments.csv — per-client list
+// Rules: Movement = In, Status = Active
+// Employee payment type: gross up amount by ÷0.8 (add basic rate tax relief)
+function parsePayments(csv) {
+  const lines=csv.trim().split(/\r?\n/).filter(l=>l.trim());
+  if (lines.length<2) return 0;
+  const headers=splitCSVLine(lines[0]).map(h=>h.toLowerCase().replace(/[\s\(\)\/]+/g,'_'));
+  const amtIdx    =headers.findIndex(h=>h.includes('payment_amount'));
+  const movIdx    =headers.findIndex(h=>h.includes('movement_type'));
+  const statusIdx =headers.findIndex(h=>h.includes('payment_status'));
+  const typeIdx   =headers.findIndex(h=>h.includes('payment_type'));
+  if (amtIdx<0) return 0;
+  let total=0;
+  for (let i=1;i<lines.length;i++) {
+    const vals=splitCSVLine(lines[i]);
+    // Must be inbound
+    if (movIdx>=0 && (vals[movIdx]||'').trim().toLowerCase()!=='in') continue;
+    // Must be active
+    if (statusIdx>=0 && (vals[statusIdx]||'').trim().toLowerCase()!=='active') continue;
+    let amt=parseNum(vals[amtIdx]);
+    // Employee contributions: client pays net, gross up for basic rate tax relief (÷80%)
+    if (typeIdx>=0 && (vals[typeIdx]||'').trim().toLowerCase()==='employee') {
+      amt = amt / 0.8;
+    }
+    total+=amt;
+  }
+  return total;
+}
+
+// ─── ZIP processing ───────────────────────────────────────────────────────────
+async function processZipFile(file) {
+  const bucket=classifyZip(file.name);
+  if (!bucket) { console.warn('Cannot classify ZIP:',file.name); return null; }
+  const zip=await JSZip.loadAsync(file);
+  const csvFiles=Object.values(zip.files).filter(f=>f.name.toLowerCase().endsWith('.csv')&&!f.dir);
+
+  // Helper: match on filename only (after last /), not full path
+  // Prevents folder name in path matching incorrectly (e.g. dashboard-regular_payments/data_refresh_date.csv)
+  const fname = f => f.name.split('/').pop().toLowerCase();
+
+  if (bucket==='aua_clients') {
+    const auaFile    =csvFiles.find(f=>fname(f)==='aua_over_time.csv');
+    const clientsFile=csvFiles.find(f=>fname(f).includes('number_of_accounts_and_clients_with_aua_over_time'));
+    if (auaFile)     { const c=await auaFile.async('string');     parsed.aua     =parseAUA(c); }
+    if (clientsFile) { const c=await clientsFile.async('string'); parsed.clients =parseClients(c); }
+    return 'aua_clients';
+  }
+  if (bucket==='fees') {
+    const feeFile=csvFiles.find(f=>fname(f).includes('fees_over_time_by_type'))
+                ||csvFiles.find(f=>fname(f).includes('fees_over_time'))
+                ||csvFiles.find(f=>fname(f)!=='data_refresh_date.csv');
+    if (feeFile) { const c=await feeFile.async('string'); parsed.fees=parseFees(c); }
+    return 'fees';
+  }
+  if (bucket==='payments') {
+    const payFile=csvFiles.find(f=>fname(f).includes('regular_payments'))
+                ||csvFiles.find(f=>fname(f)!=='data_refresh_date.csv');
+    if (payFile) { const c=await payFile.async('string'); parsed.payments=parsePayments(c); }
+    return 'payments';
+  }
+  return null;
+}
+
+// ─── Modal ────────────────────────────────────────────────────────────────────
+function openModal()  { document.getElementById('uploadModal').classList.add('open'); }
+function closeModal() { document.getElementById('uploadModal').classList.remove('open'); }
+
+// ─── SharePoint file fetcher ──────────────────────────────────────────────────
+async function listSharePointZips() {
+  const apiUrl = `/sites/PortaPartners/_api/web/GetFolderByServerRelativePath(decodedurl='/sites/PortaPartners/Shared%20Documents/KPI%20Dashboard')/Files?$select=Name,ServerRelativeUrl,TimeLastModified&$orderby=TimeLastModified%20desc`;
+  const r = await fetch(apiUrl, { headers:{ 'Accept':'application/json;odata=nometadata' } });
+  if (!r.ok) throw new Error('Could not list SharePoint folder (HTTP '+r.status+')');
+  const d = await r.json();
+  return d.value.filter(f => f.Name.toLowerCase().endsWith('.zip'));
+}
+
+async function fetchZipAsBlob(serverRelativeUrl) {
+  const r = await fetch(serverRelativeUrl);
+  if (!r.ok) throw new Error('Could not fetch '+serverRelativeUrl+' (HTTP '+r.status+')');
+  return r.blob();
+}
+
+function setZipItem(id, state, text) {
+  const el = document.getElementById(id);
+  el.className = 'zip-item' + (state ? ' '+state : '');
+  if (text) el.querySelector('.zi-name').textContent = text;
+  el.querySelector('.zi-check').textContent = state==='loaded' ? '✓' : state==='error' ? '✗' : '';
+}
+
+function setRefreshHint(msg) {
+  document.getElementById('refreshHint').textContent = msg;
+}
+
+async function refreshFromSharePoint() {
+  // Reset status items
+  ['zi-aua','zi-fees','zi-payments'].forEach(id => setZipItem(id,'',''));
+  setZipItem('zi-aua','','AUA & Client Base');
+  setZipItem('zi-fees','','Fees Over Time');
+  setZipItem('zi-payments','','Regular Payments');
+  setRefreshHint('Scanning SharePoint folder for ZIP files…');
+  openModal();
+
+  parsed.aua = null; parsed.clients = null; parsed.fees = null; parsed.payments = null;
+
+  let zipFiles;
+  try {
+    zipFiles = await listSharePointZips();
+  } catch(e) {
+    setRefreshHint('⚠ Could not read SharePoint folder. Are you viewing this from SharePoint?');
+    return;
+  }
+
+  if (!zipFiles.length) {
+    setRefreshHint('⚠ No ZIP files found in the KPI Dashboard folder. Upload the 3 Söderberg ZIPs there first.');
+    return;
+  }
+
+  setRefreshHint('Found '+zipFiles.length+' ZIP file'+(zipFiles.length===1?'':'s')+' — reading…');
+
+  for (const file of zipFiles) {
+    const bucket = classifyZip(file.Name);
+    if (!bucket) continue;
+    try {
+      const blob = await fetchZipAsBlob(file.ServerRelativeUrl);
+      const zipFile = new File([blob], file.Name, {type:'application/zip'});
+      const result = await processZipFile(zipFile);
+      if (result==='aua_clients') setZipItem('zi-aua','loaded','AUA & Clients — '+file.Name);
+      else if (result==='fees')   setZipItem('zi-fees','loaded','Fees — '+file.Name);
+      else if (result==='payments') setZipItem('zi-payments','loaded','Payments — '+file.Name);
+    } catch(e) {
+      console.error('Error reading '+file.Name, e);
+      if (bucket==='aua_clients') setZipItem('zi-aua','error','Error: '+file.Name);
+      else if (bucket==='fees')   setZipItem('zi-fees','error','Error: '+file.Name);
+      else if (bucket==='payments') setZipItem('zi-payments','error','Error: '+file.Name);
+    }
+  }
+
+  const allLoaded = parsed.aua!==null && parsed.clients!==null && parsed.fees!==null && parsed.payments!==null;
+  const anyLoaded = parsed.aua!==null || parsed.fees!==null || parsed.payments!==null;
+
+  if (!anyLoaded) {
+    setRefreshHint('⚠ ZIP files found but could not be read. Check they are the correct Söderberg exports.');
+    return;
+  }
+
+  const state = {
+    generatedAt: new Date().toISOString().slice(0,10),
+    aua:          parsed.aua     || FALLBACK.aua,
+    clients:      parsed.clients || FALLBACK.clients,
+    fees:         parsed.fees    || FALLBACK.fees,
+    contributions: parsed.payments !== null ? parsed.payments : FALLBACK.contributions
+  };
+
+  _currentState = state;
+  closeModal();
+  render(state);
+
+  if (allLoaded) {
+    showStatus('✓ Dashboard updated from SharePoint · Data as of '+state.generatedAt,'ok');
+  } else {
+    showStatus('⚠ Partial update — some ZIPs missing. Using built-in data for missing figures.','warn');
+  }
+  setTimeout(()=>hideStatus(), 7000);
+}
+
+function showStatus(msg,type) { const el=document.getElementById('statusBar'); el.textContent=msg; el.className='status-bar show '+type; }
+function hideStatus() { document.getElementById('statusBar').className='status-bar'; }
+
+// ─── Format helpers ───────────────────────────────────────────────────────────
+function fmt(n,d=1){ return n.toLocaleString('en-GB',{minimumFractionDigits:d,maximumFractionDigits:d}); }
+function fmtK(n){ return fmt(n/1000,1); }
+function fmtM(n){ return fmt(n/1000000,1); }
+function pct(v,min,max){ return Math.min(100,Math.max(0,((v-min)/(max-min))*100)); }
+function monthLabel(m){ const [yr,mo]=m.split('-'); return new Date(yr,mo-1).toLocaleDateString('en-GB',{month:'short',year:'2-digit'}); }
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function render(state) {
+  const yf=yearFraction();
+  const yPct=(yf*100).toFixed(1)+'%';
+  document.getElementById('yearFill').style.width=yPct;
+  document.getElementById('yearPctBadge').textContent=yPct+' through 2026';
+  document.getElementById('dataDate').textContent=state.generatedAt
+    ? new Date(state.generatedAt+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : '—';
+
+  // AUM
+  const latestAUA=state.aua.filter(d=>d.value>0).slice(-1)[0];
+  const aumVal=latestAUA?latestAUA.value:0;
+  const aumP=pct(aumVal,BASELINE.aum,TARGET.aum);
+  const aumC=proRataColour(aumVal,TARGET.aum,BASELINE.aum);
+  document.getElementById('aumVal').textContent=fmtM(aumVal);
+  document.getElementById('aumSub').textContent='+£'+fmtM(aumVal-BASELINE.aum)+'m since baseline';
+  document.getElementById('aumPct').textContent=aumP.toFixed(1)+'%';
+  document.getElementById('aumNote').textContent='£'+fmtM(TARGET.aum-aumVal)+'m remaining to target';
+  const aumBar=document.getElementById('aumBar');
+  aumBar.className='prog-fill '+colClass(aumC);
+  setTimeout(()=>{aumBar.style.width=aumP.toFixed(1)+'%';},100);
+
+  // Contributions
+  const cVal=state.contributions||0;
+  const cP=pct(cVal,BASELINE.contributions,TARGET.contributions);
+  const cC=proRataColour(cVal,TARGET.contributions,BASELINE.contributions);
+  document.getElementById('contribVal').textContent=fmtK(cVal);
+  document.getElementById('contribPct').textContent=cP.toFixed(1)+'%';
+  document.getElementById('contribNote').textContent=cVal>=TARGET.contributions?'✓ Target achieved!':'£'+fmtK(TARGET.contributions-cVal)+'k/mo remaining';
+  const cBar=document.getElementById('contribBar');
+  cBar.className='prog-fill '+colClass(cC);
+  setTimeout(()=>{cBar.style.width=cP.toFixed(1)+'%';},150);
+
+  // Fees — Adviser Adhoc Fee + Adviser Initial Fee (cols B + D in fees_over_time_by_type.csv)
+  // Plus any manual off-platform adjustments stored separately
+  const fees2026=state.fees.filter(f=>f.month&&f.month.startsWith('2026'));
+  const soderbergTotal=fees2026.reduce((s,f)=>s+(f.adhoc||0)+(f.initial||0),0);
+  const manualFees=loadManualFees();
+  const manualTotal=manualFeesYTD(manualFees);
+  const feesTotal=soderbergTotal+manualTotal;
+  const fP=pct(feesTotal,0,TARGET.fees);
+  const fC=feesProRataColour(feesTotal);
+  document.getElementById('feesVal').textContent=fmtK(feesTotal);
+  document.getElementById('feesSub').textContent=fees2026.length+' month'+(fees2026.length===1?'':'s')+' of 2026 data';
+
+  document.getElementById('feesPct').textContent=fP.toFixed(1)+'%';
+  document.getElementById('feesNote').textContent='£'+fmtK(TARGET.fees-feesTotal)+'k remaining to target';
+  const fBar=document.getElementById('feesBar');
+  fBar.className='prog-fill '+colClass(fC);
+  setTimeout(()=>{fBar.style.width=fP.toFixed(1)+'%';},200);
+
+  // Clients
+  const latestC=state.clients.slice(-1)[0];
+  const clVal=latestC?latestC.clients:0;
+  const acVal=latestC?latestC.accounts:0;
+  const clP=pct(clVal,BASELINE.clients,TARGET.clients);
+  const clC=proRataColour(clVal,TARGET.clients,BASELINE.clients);
+  document.getElementById('clientsVal').textContent=clVal.toLocaleString('en-GB');
+  document.getElementById('clientsSub').textContent=acVal.toLocaleString('en-GB')+' accounts';
+  document.getElementById('clientsPct').textContent=clP.toFixed(1)+'%';
+  document.getElementById('clientsNote').textContent=(TARGET.clients-clVal)+' clients remaining to target';
+  const clBar=document.getElementById('clientsBar');
+  clBar.className='prog-fill '+colClass(clC);
+  setTimeout(()=>{clBar.style.width=clP.toFixed(1)+'%';},250);
+
+  // Update baseline badges with dynamic amounts
+  document.getElementById('baseAum').textContent=
+    '↑ £'+fmtM(aumVal-BASELINE.aum)+'m from £224.3m Dec 2025';
+  document.getElementById('baseContrib').textContent=
+    '↑ £'+fmtK(cVal-BASELINE.contributions)+'k/mo from £442k Dec 2025';
+  document.getElementById('baseClients').textContent=
+    '↑ '+(clVal-BASELINE.clients)+' from '+BASELINE.clients.toLocaleString('en-GB')+' clients Dec 2025';
+
+  // Footer
+  document.getElementById('footAccounts').textContent=acVal.toLocaleString('en-GB');
+  document.getElementById('footClients').textContent=clVal.toLocaleString('en-GB');
+  document.getElementById('footAUM').textContent='£'+fmtM(aumVal)+'m';
+
+  // Charts
+  const aumFrom2025=state.aua.filter(d=>d.month>='2025-12'&&d.value>0);
+  drawLineChart('aumChart','aumLabels',aumFrom2025.map(d=>({x:d.month,y:d.value})),{
+    baseline:BASELINE.aum, target:TARGET.aum, gradId:'ag'
+  });
+
+  // Fee bars use adhoc + initial + manual per month
+  const feesData=fees2026.map(f=>({x:f.month,y:(f.adhoc||0)+(f.initial||0)+(parseFloat(manualFees[f.month])||0)}));
+  drawBarChart('feesChart','feesLabels',feesData);
+
+  const clientsFrom2025=state.clients.filter(d=>d.month>='2025-12');
+  drawLineChart('clientsChart','clientsLabels',clientsFrom2025.map(d=>({x:d.month,y:d.clients})),{
+    baseline:BASELINE.clients, target:TARGET.clients, gradId:'cg'
+  });
+
+  drawMilestones(aumVal,clVal,feesTotal,cVal);
+}
+
+// ─── SVG line chart — single colour based on current position, smooth, no dots ──
+function drawLineChart(svgId,labelsId,data,opts) {
+  if (!data.length) return;
+  const W=800,H=110,padL=8,padR=8,padT=6,padB=8;
+  const vals=data.map(d=>d.y);
+  const {baseline,target,gradId}=opts;
+
+  // Determine single colour for whole line based on LATEST data point vs pro-rata
+  const latest=data[data.length-1];
+  let lineCol=C.blue;
+  if (latest.x>='2026-01' && baseline!==undefined && target) {
+    const mo=parseInt(latest.x.split('-')[1]);
+    const frac=Math.min(1,mo/12);
+    const proRata=baseline+frac*(target-baseline);
+    const ratio=(latest.y-baseline)/(proRata-baseline);
+    lineCol=ratio>=1.0?C.green:ratio>=0.5?C.blue:C.orange;
+  }
+
+  // Auto-scale Y: min slightly below lowest value, max slightly above highest
+  const minV=Math.min(...vals);
+  const maxV=Math.max(...vals);
+  const range=maxV-minV||maxV*0.1||1;
+  const scaledMin=minV-range*0.08;
+  const scaledMax=maxV+range*0.12;
+
+  const xi=i=>padL+(data.length<2?(W-padL-padR)/2:i/(data.length-1))*(W-padL-padR);
+  const yv=v=>H-padB-((v-scaledMin)/(scaledMax-scaledMin))*(H-padT-padB);
+
+  // Smooth curve using SVG cubic bezier
+  function smoothPath(pts) {
+    if (pts.length<2) return `M${pts[0][0]},${pts[0][1]}`;
+    let d=`M${pts[0][0]},${pts[0][1]}`;
+    for (let i=1;i<pts.length;i++) {
+      const cp1x=(pts[i-1][0]+pts[i][0])/2;
+      const cp1y=pts[i-1][1];
+      const cp2x=(pts[i-1][0]+pts[i][0])/2;
+      const cp2y=pts[i][1];
+      d+=` C${cp1x},${cp1y} ${cp2x},${cp2y} ${pts[i][0]},${pts[i][1]}`;
+    }
+    return d;
+  }
+
+  const pts=data.map((d,i)=>[xi(i),yv(d.y)]);
+  const linePath=smoothPath(pts);
+  const areaPath=linePath+` L${pts[pts.length-1][0]},${H-padB} L${pts[0][0]},${H-padB} Z`;
+
+  let html=`<defs>`;
+  html+=`<linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${lineCol}" stop-opacity="0.25"/><stop offset="100%" stop-color="${lineCol}" stop-opacity="0.02"/></linearGradient>`;
+  html+=`</defs>`;
+  html+=`<path d="${areaPath}" fill="url(#${gradId})"/>`;
+  html+=`<path d="${linePath}" fill="none" stroke="${lineCol}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`;
+  // End dot only
+  const lx=pts[pts.length-1][0], ly=pts[pts.length-1][1];
+  html+=`<circle cx="${lx}" cy="${ly}" r="4" fill="${lineCol}"/>`;
+  html+=`<circle cx="${lx}" cy="${ly}" r="7" fill="${lineCol}" opacity="0.2"/>`;
+
+  document.getElementById(svgId).innerHTML=html;
+  const step=Math.max(1,Math.floor(data.length/7));
+  const shown=data.filter((_,i)=>i%step===0||i===data.length-1);
+  document.getElementById(labelsId).innerHTML=shown.map(d=>`<span>${monthLabel(d.x)}</span>`).join('');
+}
+
+// ─── SVG bar chart for fees (colour per bar vs 1/12 monthly target) ───────────
+function drawBarChart(svgId,labelsId,data) {
+  if (!data.length) return;
+  const W=800,H=110,pad=8,gap=10;
+  const vals=data.map(d=>d.y);
+  // Auto-scale: from 0 to max value with a small ceiling
+  const maxV=Math.max(...vals)*1.15||1;
+  const barW=Math.max(20,(W-2*pad-(data.length-1)*gap)/data.length);
+
+  let html=`<defs>`;
+  [C.green,C.blue,C.orange].forEach((c,i)=>{
+    html+=`<linearGradient id="bg${i}_${svgId}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${c}" stop-opacity="0.9"/><stop offset="100%" stop-color="${c}" stop-opacity="0.45"/></linearGradient>`;
+  });
+  html+=`</defs>`;
+
+  data.forEach((d,i)=>{
+    const bx=pad+i*(barW+gap);
+    const bh=Math.max(2,((d.y/maxV)*(H-2*pad)));
+    const by=H-pad-bh;
+    const col=monthlyFeeColour(d.y);
+    const gradIdx=col===C.green?0:col===C.blue?1:2;
+    html+=`<rect x="${bx}" y="${by}" width="${barW}" height="${bh}" fill="url(#bg${gradIdx}_${svgId})" rx="3"/>`;
+  });
+  document.getElementById(svgId).innerHTML=html;
+
+  const step=Math.max(1,Math.floor(data.length/7));
+  const shown=data.filter((_,i)=>i%step===0||i===data.length-1);
+  document.getElementById(labelsId).innerHTML=shown.map(d=>`<span>${monthLabel(d.x)}</span>`).join('');
+}
+
+// ─── Milestones ───────────────────────────────────────────────────────────────
+function buildMilestoneList(current,milestones,fmtRemaining) {
+  const passedIdx=milestones.map((m,i)=>current>=m.v?i:-1).filter(i=>i>=0);
+  const lastPassedIdx=passedIdx.length>0?Math.max(...passedIdx):-1;
+  const nextIdx=lastPassedIdx+1;
+  const toShow=[];
+  if (lastPassedIdx>=0) toShow.push({...milestones[lastPassedIdx],prevAchieved:true,sub:'✓ Achieved'});
+  if (nextIdx<milestones.length) toShow.push({...milestones[nextIdx],next:true,sub:fmtRemaining(milestones[nextIdx].v)});
+  if (nextIdx+1<milestones.length) toShow.push({...milestones[nextIdx+1],sub:fmtRemaining(milestones[nextIdx+1].v)});
+  if (!toShow.length) toShow.push({...milestones[milestones.length-1],achieved:true,sub:'✓ Target achieved!'});
+  return toShow.map(m=>{
+    const cls=m.achieved?'achieved':m.next?'next':m.prevAchieved?'prev-achieved':'';
+    const icon=m.achieved||m.prevAchieved?'✅':m.next?'🎯':'○';
+    return `<div class="milestone ${cls}"><div class="m-icon">${icon}</div><div><div class="m-title">${m.label}</div><div class="m-sub">${m.sub}</div></div></div>`;
+  }).join('');
+}
+
+function drawMilestones(aum,clients,fees,contrib) {
+  document.getElementById('ms-aum').innerHTML=buildMilestoneList(aum,
+    [{v:250e6,label:'£250m AUM'},{v:275e6,label:'£275m AUM'},{v:300e6,label:'£300m AUM'},{v:325e6,label:'£325m AUM'},{v:350e6,label:'£350m AUM'},{v:375e6,label:'£375m AUM'}],
+    v=>'£'+fmtM(v-aum)+'m to go');
+  document.getElementById('ms-contrib').innerHTML=buildMilestoneList(contrib,
+    [{v:500000,label:'£500k/mo'},{v:550000,label:'£550k/mo'},{v:600000,label:'£600k/mo'},{v:650000,label:'£650k/mo'},{v:700000,label:'£700k/mo'},{v:750000,label:'£750k/mo'}],
+    v=>'£'+fmtK(v-contrib)+'k/mo to go');
+  document.getElementById('ms-fees').innerHTML=buildMilestoneList(fees,
+    [{v:20000,label:'£20k YTD'},{v:40000,label:'£40k YTD'},{v:60000,label:'£60k YTD'},{v:80000,label:'£80k YTD'},{v:100000,label:'£100k YTD'},{v:130000,label:'£130k YTD'}],
+    v=>'£'+fmtK(v-fees)+'k to go');
+  document.getElementById('ms-clients').innerHTML=buildMilestoneList(clients,
+    [{v:700,label:'700 clients'},{v:750,label:'750 clients'},{v:800,label:'800 clients'},{v:850,label:'850 clients'},{v:900,label:'900 clients'},{v:925,label:'925 clients'}],
+    v=>(v-clients)+' clients to go');
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+(async function init() {
+  // Always render fallback immediately so the dashboard isn't blank
+  _currentState = FALLBACK;
+  render(FALLBACK);
+
+  // Then try to auto-load ZIPs from SharePoint
+  try {
+    const zipFiles = await listSharePointZips();
+    if (zipFiles.length) {
+      // Silently fetch in background
+      parsed.aua = null; parsed.clients = null; parsed.fees = null; parsed.payments = null;
+      for (const file of zipFiles) {
+        const bucket = classifyZip(file.Name);
+        if (!bucket) continue;
+        try {
+          const blob = await fetchZipAsBlob(file.ServerRelativeUrl);
+          const zipFile = new File([blob], file.Name, {type:'application/zip'});
+          await processZipFile(zipFile);
+        } catch(e) { console.warn('Could not read '+file.Name, e); }
+      }
+      const anyLoaded = parsed.aua!==null || parsed.fees!==null || parsed.payments!==null;
+      if (anyLoaded) {
+        const state = {
+          generatedAt: new Date().toISOString().slice(0,10),
+          aua:          parsed.aua     || FALLBACK.aua,
+          clients:      parsed.clients || FALLBACK.clients,
+          fees:         parsed.fees    || FALLBACK.fees,
+          contributions: parsed.payments !== null ? parsed.payments : FALLBACK.contributions
+        };
+        _currentState = state;
+        render(state);
+        const allLoaded = parsed.aua!==null && parsed.clients!==null && parsed.fees!==null && parsed.payments!==null;
+        if (!allLoaded) showStatus('⚠ Some ZIP files missing from SharePoint folder — partial data shown','warn');
+      } else {
+        showStatus('⚠ ZIP files found but could not be read — showing built-in data · Click "Refresh Data" to retry','warn');
+      }
+    } else {
+      // No ZIPs in SharePoint yet — show fallback with a hint
+      showStatus('⚠ No ZIP files in SharePoint folder yet — showing built-in data · Upload Söderberg ZIPs to the KPI Dashboard folder then click "Refresh Data"','warn');
+    }
+  } catch(e) {
+    // Not running from SharePoint (e.g. opened locally) — just show fallback silently
+    showStatus('⚠ Showing built-in data · This dashboard must be opened from SharePoint to auto-load figures','warn');
+  }
+})();
+</script>
+</body>
+</html>
