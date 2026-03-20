@@ -57,11 +57,14 @@ const SP_FOLDER = '/sites/PortaPartners/Shared%20Documents/KPI%20Dashboard';
   .zip-item .zi-name{flex:1;}
   .zip-item .zi-check{font-size:14px;}
   .modal-actions{display:flex;flex-direction:column;align-items:center;gap:10px;}
-  #applyBtn{width:100%;padding:14px;background:var(--blue);color:var(--navy);border:none;border-radius:8px;font-family:'Manrope',sans-serif;font-size:13px;font-weight:800;letter-spacing:0.15em;text-transform:uppercase;cursor:pointer;transition:opacity 0.2s;opacity:0.35;}
-  #applyBtn:not(:disabled){opacity:1;}
-  #applyBtn:not(:disabled):hover{opacity:0.88;}
-  #applyBtn:disabled{cursor:not-allowed;}
-  .modal-hint{font-size:11px;font-weight:500;color:var(--w25);}
+  .zip-drop-area{border:1.5px dashed var(--navy-edge);border-radius:12px;padding:32px 20px;display:flex;flex-direction:column;align-items:center;gap:12px;cursor:pointer;transition:border-color 0.2s,background 0.2s;position:relative;text-align:center;}
+  .zip-drop-area:hover,.zip-drop-area.drag-over{border-color:var(--blue);background:var(--blue-mid);}
+  .zip-drop-area input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+  .zip-drop-area .dz-icon{font-size:32px;}
+  .zip-drop-area .dz-title{font-size:14px;font-weight:700;color:var(--w80);}
+  .zip-drop-area .dz-sub{font-size:11px;font-weight:500;color:var(--w25);letter-spacing:0.08em;}
+  #applyBtn{width:100%;padding:14px;background:var(--blue);color:var(--navy);border:none;border-radius:8px;font-family:'Manrope',sans-serif;font-size:13px;font-weight:800;letter-spacing:0.15em;text-transform:uppercase;cursor:pointer;transition:opacity 0.2s;}
+  #applyBtn:hover{opacity:0.88;}
 
   /* ── MANUAL FEES MODAL ── */
   #manualModal{display:none;position:fixed;inset:0;z-index:200;background:rgba(10,12,50,0.92);backdrop-filter:blur(6px);align-items:center;justify-content:center;}
@@ -168,13 +171,22 @@ const SP_FOLDER = '/sites/PortaPartners/Shared%20Documents/KPI%20Dashboard';
 </head>
 <body>
 
-<!-- ═══════ REFRESH MODAL ═══════ -->
+<!-- ═══════ UPDATE MODAL ═══════ -->
 <div id="uploadModal">
   <div class="modal-box">
     <button class="modal-close" onclick="closeModal()">✕</button>
     <div class="modal-header">
-      <h2>Refreshing Dashboard Data</h2>
-      <p>Reading ZIP files from the <strong>KPI Dashboard</strong> folder in SharePoint Documents</p>
+      <h2 id="modalTitle">Update Dashboard Data</h2>
+      <p id="modalDesc">Drop the 3 ZIP files from the Söderberg email — all at once or one by one</p>
+    </div>
+    <!-- ZIP upload UI (shown on GitHub Pages) -->
+    <div id="zipUploadArea">
+      <div class="zip-drop-area" id="dropArea">
+        <input type="file" id="zipInput" accept=".zip" multiple>
+        <div class="dz-icon">📦</div>
+        <div class="dz-title">Drop ZIP files here or click to browse</div>
+        <div class="dz-sub">Firm_-_AUA__client_base · Firm_-_Fees · Regular_payments</div>
+      </div>
     </div>
     <div class="zip-status">
       <div class="zip-item" id="zi-aua"><div class="zi-dot"></div><div class="zi-name">AUA &amp; Client Base</div><div class="zi-check"></div></div>
@@ -182,7 +194,8 @@ const SP_FOLDER = '/sites/PortaPartners/Shared%20Documents/KPI%20Dashboard';
       <div class="zip-item" id="zi-payments"><div class="zi-dot"></div><div class="zi-name">Regular Payments</div><div class="zi-check"></div></div>
     </div>
     <div class="modal-actions">
-      <div class="modal-hint" id="refreshHint">Scanning SharePoint folder for ZIP files…</div>
+      <button id="applyBtn" onclick="applyUploadedData()" style="display:none">Apply &amp; Update Dashboard →</button>
+      <div class="modal-hint" id="refreshHint"></div>
     </div>
   </div>
 </div>
@@ -221,7 +234,7 @@ const SP_FOLDER = '/sites/PortaPartners/Shared%20Documents/KPI%20Dashboard';
     <div class="header-right">
       <div class="data-label">Data as of</div>
       <div class="data-date" id="dataDate">—</div>
-      <button class="update-btn" onclick="refreshFromSharePoint()"><span class="upd-dot"></span>Refresh Data</button>
+      <button class="update-btn" onclick="openUpdateModal()"><span class="upd-dot"></span>Refresh Data</button>
       <button class="update-btn" onclick="openManualModal()">✎ Manual Fees</button>
     </div>
   </div>
@@ -562,22 +575,89 @@ async function processZipFile(file) {
   return null;
 }
 
+// ─── Are we on SharePoint? ────────────────────────────────────────────────────
+function onSharePoint() {
+  return location.hostname.includes('sharepoint.com');
+}
+
 // ─── Modal ────────────────────────────────────────────────────────────────────
 function openModal()  { document.getElementById('uploadModal').classList.add('open'); }
 function closeModal() { document.getElementById('uploadModal').classList.remove('open'); }
+
+function openUpdateModal() {
+  if (onSharePoint()) {
+    // SharePoint mode — auto-fetch ZIPs
+    document.getElementById('modalTitle').textContent = 'Refreshing Dashboard Data';
+    document.getElementById('modalDesc').innerHTML = 'Reading ZIP files from the <strong>KPI Dashboard</strong> folder in SharePoint Documents';
+    document.getElementById('zipUploadArea').style.display = 'none';
+    document.getElementById('applyBtn').style.display = 'none';
+    setZipItem('zi-aua','','AUA & Client Base');
+    setZipItem('zi-fees','','Fees Over Time');
+    setZipItem('zi-payments','','Regular Payments');
+    setRefreshHint('Scanning SharePoint folder for ZIP files…');
+    openModal();
+    refreshFromSharePoint();
+  } else {
+    // GitHub Pages / local mode — show ZIP upload UI
+    document.getElementById('modalTitle').textContent = 'Update Dashboard Data';
+    document.getElementById('modalDesc').textContent = 'Drop the 3 ZIP files from the Söderberg email — all at once or one by one';
+    document.getElementById('zipUploadArea').style.display = 'block';
+    setZipItem('zi-aua','','AUA & Client Base');
+    setZipItem('zi-fees','','Fees Over Time');
+    setZipItem('zi-payments','','Regular Payments');
+    document.getElementById('applyBtn').style.display = 'none';
+    setRefreshHint('Data is processed in your browser — nothing is uploaded anywhere');
+    openModal();
+  }
+}
+
+// ─── ZIP upload handlers (GitHub Pages mode) ─────────────────────────────────
+async function handleFiles(fileList) {
+  const files = Array.from(fileList).filter(f => f.name.toLowerCase().endsWith('.zip'));
+  parsed.aua = null; parsed.clients = null; parsed.fees = null; parsed.payments = null;
+  for (const file of files) {
+    try {
+      const result = await processZipFile(file);
+      if (result==='aua_clients') setZipItem('zi-aua','loaded','AUA & Clients — '+file.name);
+      else if (result==='fees')    setZipItem('zi-fees','loaded','Fees — '+file.name);
+      else if (result==='payments') setZipItem('zi-payments','loaded','Payments — '+file.name);
+    } catch(e) { console.error('Error reading '+file.name, e); }
+  }
+  const anyLoaded = parsed.aua!==null || parsed.fees!==null || parsed.payments!==null;
+  const applyBtn = document.getElementById('applyBtn');
+  if (anyLoaded) {
+    applyBtn.style.display = 'block';
+    setRefreshHint('');
+  }
+}
+
+function applyUploadedData() {
+  const state = {
+    generatedAt: new Date().toISOString().slice(0,10),
+    aua:          parsed.aua     || FALLBACK.aua,
+    clients:      parsed.clients || FALLBACK.clients,
+    fees:         parsed.fees    || FALLBACK.fees,
+    contributions: parsed.payments !== null ? parsed.payments : FALLBACK.contributions
+  };
+  _currentState = state;
+  closeModal();
+  render(state);
+  showStatus('✓ Dashboard updated · Data as of '+state.generatedAt,'ok');
+  setTimeout(()=>hideStatus(), 6000);
+}
 
 // ─── SharePoint file fetcher ──────────────────────────────────────────────────
 async function listSharePointZips() {
   const apiUrl = `/sites/PortaPartners/_api/web/GetFolderByServerRelativePath(decodedurl='/sites/PortaPartners/Shared%20Documents/KPI%20Dashboard')/Files?$select=Name,ServerRelativeUrl,TimeLastModified&$orderby=TimeLastModified%20desc`;
   const r = await fetch(apiUrl, { headers:{ 'Accept':'application/json;odata=nometadata' } });
-  if (!r.ok) throw new Error('Could not list SharePoint folder (HTTP '+r.status+')');
+  if (!r.ok) throw new Error('HTTP '+r.status);
   const d = await r.json();
   return d.value.filter(f => f.Name.toLowerCase().endsWith('.zip'));
 }
 
 async function fetchZipAsBlob(serverRelativeUrl) {
   const r = await fetch(serverRelativeUrl);
-  if (!r.ok) throw new Error('Could not fetch '+serverRelativeUrl+' (HTTP '+r.status+')');
+  if (!r.ok) throw new Error('HTTP '+r.status);
   return r.blob();
 }
 
@@ -593,31 +673,19 @@ function setRefreshHint(msg) {
 }
 
 async function refreshFromSharePoint() {
-  // Reset status items
-  ['zi-aua','zi-fees','zi-payments'].forEach(id => setZipItem(id,'',''));
-  setZipItem('zi-aua','','AUA & Client Base');
-  setZipItem('zi-fees','','Fees Over Time');
-  setZipItem('zi-payments','','Regular Payments');
-  setRefreshHint('Scanning SharePoint folder for ZIP files…');
-  openModal();
-
   parsed.aua = null; parsed.clients = null; parsed.fees = null; parsed.payments = null;
-
   let zipFiles;
   try {
     zipFiles = await listSharePointZips();
   } catch(e) {
-    setRefreshHint('⚠ Could not read SharePoint folder. Are you viewing this from SharePoint?');
+    setRefreshHint('⚠ Could not read SharePoint folder.');
     return;
   }
-
   if (!zipFiles.length) {
     setRefreshHint('⚠ No ZIP files found in the KPI Dashboard folder. Upload the 3 Söderberg ZIPs there first.');
     return;
   }
-
   setRefreshHint('Found '+zipFiles.length+' ZIP file'+(zipFiles.length===1?'':'s')+' — reading…');
-
   for (const file of zipFiles) {
     const bucket = classifyZip(file.Name);
     if (!bucket) continue;
@@ -629,21 +697,14 @@ async function refreshFromSharePoint() {
       else if (result==='fees')   setZipItem('zi-fees','loaded','Fees — '+file.Name);
       else if (result==='payments') setZipItem('zi-payments','loaded','Payments — '+file.Name);
     } catch(e) {
-      console.error('Error reading '+file.Name, e);
       if (bucket==='aua_clients') setZipItem('zi-aua','error','Error: '+file.Name);
       else if (bucket==='fees')   setZipItem('zi-fees','error','Error: '+file.Name);
       else if (bucket==='payments') setZipItem('zi-payments','error','Error: '+file.Name);
     }
   }
-
   const allLoaded = parsed.aua!==null && parsed.clients!==null && parsed.fees!==null && parsed.payments!==null;
   const anyLoaded = parsed.aua!==null || parsed.fees!==null || parsed.payments!==null;
-
-  if (!anyLoaded) {
-    setRefreshHint('⚠ ZIP files found but could not be read. Check they are the correct Söderberg exports.');
-    return;
-  }
-
+  if (!anyLoaded) { setRefreshHint('⚠ Could not read ZIP files. Check they are the correct Söderberg exports.'); return; }
   const state = {
     generatedAt: new Date().toISOString().slice(0,10),
     aua:          parsed.aua     || FALLBACK.aua,
@@ -651,16 +712,11 @@ async function refreshFromSharePoint() {
     fees:         parsed.fees    || FALLBACK.fees,
     contributions: parsed.payments !== null ? parsed.payments : FALLBACK.contributions
   };
-
   _currentState = state;
   closeModal();
   render(state);
-
-  if (allLoaded) {
-    showStatus('✓ Dashboard updated from SharePoint · Data as of '+state.generatedAt,'ok');
-  } else {
-    showStatus('⚠ Partial update — some ZIPs missing. Using built-in data for missing figures.','warn');
-  }
+  if (allLoaded) showStatus('✓ Dashboard updated from SharePoint · Data as of '+state.generatedAt,'ok');
+  else showStatus('⚠ Partial update — some ZIPs missing.','warn');
   setTimeout(()=>hideStatus(), 7000);
 }
 
@@ -894,50 +950,58 @@ function drawMilestones(aum,clients,fees,contrib) {
     v=>(v-clients)+' clients to go');
 }
 
+// ─── Wire up ZIP file input (GitHub Pages mode) ───────────────────────────────
+const dropArea = document.getElementById('dropArea');
+const zipInput = document.getElementById('zipInput');
+zipInput.addEventListener('change', e => handleFiles(e.target.files));
+dropArea.addEventListener('dragover', e => { e.preventDefault(); dropArea.classList.add('drag-over'); });
+dropArea.addEventListener('dragleave', () => dropArea.classList.remove('drag-over'));
+dropArea.addEventListener('drop', e => { e.preventDefault(); dropArea.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 (async function init() {
-  // Always render fallback immediately so the dashboard isn't blank
   _currentState = FALLBACK;
   render(FALLBACK);
 
-  // Then try to auto-load ZIPs from SharePoint
-  try {
-    const zipFiles = await listSharePointZips();
-    if (zipFiles.length) {
-      // Silently fetch in background
-      parsed.aua = null; parsed.clients = null; parsed.fees = null; parsed.payments = null;
-      for (const file of zipFiles) {
-        const bucket = classifyZip(file.Name);
-        if (!bucket) continue;
-        try {
-          const blob = await fetchZipAsBlob(file.ServerRelativeUrl);
-          const zipFile = new File([blob], file.Name, {type:'application/zip'});
-          await processZipFile(zipFile);
-        } catch(e) { console.warn('Could not read '+file.Name, e); }
-      }
-      const anyLoaded = parsed.aua!==null || parsed.fees!==null || parsed.payments!==null;
-      if (anyLoaded) {
-        const state = {
-          generatedAt: new Date().toISOString().slice(0,10),
-          aua:          parsed.aua     || FALLBACK.aua,
-          clients:      parsed.clients || FALLBACK.clients,
-          fees:         parsed.fees    || FALLBACK.fees,
-          contributions: parsed.payments !== null ? parsed.payments : FALLBACK.contributions
-        };
-        _currentState = state;
-        render(state);
-        const allLoaded = parsed.aua!==null && parsed.clients!==null && parsed.fees!==null && parsed.payments!==null;
-        if (!allLoaded) showStatus('⚠ Some ZIP files missing from SharePoint folder — partial data shown','warn');
+  if (onSharePoint()) {
+    // Auto-fetch ZIPs silently on load
+    try {
+      const zipFiles = await listSharePointZips();
+      if (zipFiles.length) {
+        parsed.aua = null; parsed.clients = null; parsed.fees = null; parsed.payments = null;
+        for (const file of zipFiles) {
+          const bucket = classifyZip(file.Name);
+          if (!bucket) continue;
+          try {
+            const blob = await fetchZipAsBlob(file.ServerRelativeUrl);
+            const zipFile = new File([blob], file.Name, {type:'application/zip'});
+            await processZipFile(zipFile);
+          } catch(e) { console.warn('Could not read '+file.Name, e); }
+        }
+        const anyLoaded = parsed.aua!==null || parsed.fees!==null || parsed.payments!==null;
+        if (anyLoaded) {
+          const state = {
+            generatedAt: new Date().toISOString().slice(0,10),
+            aua: parsed.aua || FALLBACK.aua, clients: parsed.clients || FALLBACK.clients,
+            fees: parsed.fees || FALLBACK.fees,
+            contributions: parsed.payments !== null ? parsed.payments : FALLBACK.contributions
+          };
+          _currentState = state;
+          render(state);
+          const allLoaded = parsed.aua!==null && parsed.clients!==null && parsed.fees!==null && parsed.payments!==null;
+          if (!allLoaded) showStatus('⚠ Some ZIP files missing from SharePoint folder — partial data shown','warn');
+        } else {
+          showStatus('⚠ ZIP files found but could not be read — showing built-in data · Click "Refresh Data" to retry','warn');
+        }
       } else {
-        showStatus('⚠ ZIP files found but could not be read — showing built-in data · Click "Refresh Data" to retry','warn');
+        showStatus('⚠ No ZIP files in the KPI Dashboard folder yet — showing built-in data · Upload Söderberg ZIPs then click "Refresh Data"','warn');
       }
-    } else {
-      // No ZIPs in SharePoint yet — show fallback with a hint
-      showStatus('⚠ No ZIP files in SharePoint folder yet — showing built-in data · Upload Söderberg ZIPs to the KPI Dashboard folder then click "Refresh Data"','warn');
+    } catch(e) {
+      showStatus('⚠ Could not read SharePoint folder — showing built-in data','warn');
     }
-  } catch(e) {
-    // Not running from SharePoint (e.g. opened locally) — just show fallback silently
-    showStatus('⚠ Showing built-in data · This dashboard must be opened from SharePoint to auto-load figures','warn');
+  } else {
+    // GitHub Pages / local — prompt to upload ZIPs
+    showStatus('⚠ Showing built-in data · Click "Refresh Data" and upload the 3 Söderberg ZIP files to update','warn');
   }
 })();
 </script>
